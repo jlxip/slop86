@@ -1040,11 +1040,14 @@ V86.prototype.set_cdrom = async function(file)
 {
     if(file.url && !file.async)
     {
-        load_file(file.url, {
-            done: result =>
-            {
-                this.v86.cpu.devices.cdrom.set_cdrom(new SyncBuffer(result));
-            },
+        await new Promise(resolve => {
+            load_file(file.url, {
+                done: result =>
+                {
+                    this.v86.cpu.devices.cdrom.set_cdrom(new SyncBuffer(result));
+                    resolve();
+                },
+            });
         });
     }
     else

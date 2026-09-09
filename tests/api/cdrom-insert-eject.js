@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import assert from "node:assert/strict";
 import { setTimeout as pause } from "timers/promises";
 import url from "node:url";
 
@@ -41,8 +42,8 @@ setTimeout(async () =>
     console.log("Got Abort, Retry, Fail?");
     await pause(1000);
     emulator.keyboard_send_text("a");
-    emulator.set_cdrom({ url: __dirname + "/../../images/linux4.iso" });
-    await pause(1000);
+    await emulator.set_cdrom({ url: __dirname + "/../../images/linux4.iso", async: false });
+    assert(emulator.v86.cpu.devices.cdrom.has_disk());
     emulator.keyboard_send_text("dir D:\n");
     await emulator.wait_until_vga_screen_contains("BOOT         <DIR>");
     console.log("Got BOOT");
