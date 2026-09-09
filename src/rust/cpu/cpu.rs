@@ -294,6 +294,7 @@ pub const TSC_RATE: f64 = 1_000_000.0;
 pub static mut cpuid_level: u32 = 0x16;
 
 pub static mut jit_block_boundary: bool = false;
+pub static mut interrupt_shadow: bool = false;
 
 const TSC_ENABLE_IMPRECISE_BROWSER_WORKAROUND: bool = true;
 
@@ -3087,6 +3088,10 @@ pub unsafe fn cycle_internal() {
             wasm_table_index as i32 + WASM_TABLE_OFFSET as i32,
             initial_state,
         );
+
+        // A fault can bypass the compiled block's normal shadow epilogue
+        interrupt_shadow = false;
+
         #[cfg(debug_assertions)]
         {
             in_jit = false;
@@ -4461,6 +4466,10 @@ pub unsafe fn store_current_tsc() { *current_tsc = read_tsc(); }
 
 #[no_mangle]
 pub unsafe fn handle_irqs() {
+    if interrupt_shadow {
+        return;
+    }
+
     if *flags & FLAG_INTERRUPT != 0 {
         if let Some(irq) = pic::pic_acknowledge_irq() {
             pic_call_irq(irq)
@@ -4472,6 +4481,9 @@ pub unsafe fn handle_irqs() {
         }
     }
 }
+
+#[no_mangle]
+pub unsafe fn set_interrupt_shadow(enabled: i32) { interrupt_shadow = enabled != 0; }
 
 unsafe fn pic_call_irq(interrupt_nr: u8) {
     *previous_ip = *instruction_pointer; // XXX: What if called after instruction (port IO)

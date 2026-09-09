@@ -171,12 +171,30 @@ pub unsafe fn instr16_16() {
 }
 pub unsafe fn instr32_16() { return_on_pagefault!(push32_sreg(SS)) }
 
+unsafe fn run_with_interrupt_shadow() {
+    let prev = interrupt_shadow;
+    interrupt_shadow = true;
+
+    *prefixes = 0;
+    *previous_ip = *instruction_pointer;
+    *instruction_counter += 1;
+    if let Ok(opcode) = read_imm8() {
+        run_instruction(opcode | (is_osize_32() as i32) << 8);
+    }
+
+    interrupt_shadow = prev;
+    if !interrupt_shadow {
+        handle_irqs();
+    }
+}
+
 #[no_mangle]
 pub unsafe fn instr16_17() {
     if !switch_seg(SS, return_on_pagefault!(safe_read16(get_stack_pointer(0)))) {
         return;
     }
     adjust_stack_reg(2);
+    run_with_interrupt_shadow();
 }
 #[no_mangle]
 pub unsafe fn instr32_17() {
@@ -187,6 +205,7 @@ pub unsafe fn instr32_17() {
         return;
     }
     adjust_stack_reg(4);
+    run_with_interrupt_shadow();
 }
 
 pub unsafe fn instr_18_mem(addr: i32, r: i32) { safe_read_write8(addr, &|x| sbb8(x, read_reg8(r))) }
@@ -917,6 +936,9 @@ pub unsafe fn instr_8E_mem(addr: i32, r: i32) {
         if !switch_seg(r, return_on_pagefault!(safe_read16(addr))) {
             return;
         }
+        if r == SS {
+            run_with_interrupt_shadow();
+        }
     }
     else {
         dbg_log!("mov sreg #ud");
@@ -926,7 +948,12 @@ pub unsafe fn instr_8E_mem(addr: i32, r: i32) {
 #[no_mangle]
 pub unsafe fn instr_8E_reg(r1: i32, r: i32) {
     if r == ES || r == SS || r == DS || r == FS || r == GS {
-        switch_seg(r, read_reg16(r1));
+        if !switch_seg(r, read_reg16(r1)) {
+            return;
+        }
+        if r == SS {
+            run_with_interrupt_shadow();
+        }
     }
     else {
         dbg_log!("mov sreg #ud");
@@ -2356,12 +2383,7 @@ pub unsafe fn instr_FB() {
         trigger_gp(0);
     }
     else {
-        *prefixes = 0;
-        *previous_ip = *instruction_pointer;
-        *instruction_counter += 1;
-        run_instruction(return_on_pagefault!(read_imm8()) | (is_osize_32() as i32) << 8);
-
-        handle_irqs();
+        run_with_interrupt_shadow();
     }
 }
 

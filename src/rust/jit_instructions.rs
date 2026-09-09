@@ -4262,6 +4262,7 @@ pub fn instr_FB_jit(ctx: &mut JitContext) {
     ctx.builder.if_void();
     codegen::gen_trigger_gp(ctx, 0);
     ctx.builder.block_end();
+    codegen::gen_fn1_const(ctx.builder, "set_interrupt_shadow", 1);
     // handle_irqs is specially handled in jit to be called one instruction after this one
 }
 

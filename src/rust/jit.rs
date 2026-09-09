@@ -573,6 +573,14 @@ fn jit_find_basic_blocks(
             dbg_assert!(Page::page_of(current_address) == Page::page_of(addr_before_instruction));
             let current_virt_addr = to_visit & !0xFFF | current_address as i32 & 0xFFF;
 
+            if analysis.ty == AnalysisType::Interpreted {
+                // Keep STI and its protected instruction in the interpreter together
+                if current_block.has_sti {
+                    current_block.number_of_instructions = 0;
+                }
+                break;
+            }
+
             if analysis.ty == AnalysisType::STI && is_near_end_of_page(current_address) {
                 // cut off before the STI so that it is handled by interpreted mode
                 profiler::stat_increment(stat::COMPILE_CUT_OFF_AT_END_OF_PAGE);
@@ -720,6 +728,7 @@ fn jit_find_basic_blocks(
 
                     break;
                 },
+                AnalysisType::Interpreted => unreachable!(),
             }
 
             if is_near_end_of_page(current_address) {
@@ -729,7 +738,7 @@ fn jit_find_basic_blocks(
         }
 
         if current_block.number_of_instructions == 0 {
-            // Empty basic block, don't insert (only happens when STI is found near end of page)
+            // Empty basic block: leave these instructions to the interpreter
             continue;
         }
 
@@ -1380,6 +1389,7 @@ fn jit_generate_module(
                     };
                     codegen::gen_debug_track_jit_exit(ctx.builder, block.last_instruction_addr);
                     codegen::gen_move_registers_from_locals_to_memory(ctx);
+                    codegen::gen_fn1_const(ctx.builder, "set_interrupt_shadow", 0);
                     codegen::gen_fn0_const(ctx.builder, "handle_irqs");
                     codegen::gen_update_instruction_counter(ctx);
                     ctx.builder.return_();

@@ -220,7 +220,13 @@ function gen_instruction_body_after_fixed_g(encoding, size)
     const imm_read = gen_read_imm_call(encoding, size);
     const instruction_postfix = [];
 
-    if(encoding.custom_sti) {
+    if(encoding.opcode === 0x17) { // pop ss
+        instruction_postfix.push("analysis.ty = analysis::AnalysisType::Interpreted;");
+    }
+    else if(encoding.opcode === 0x8E) { // mov sreg
+        instruction_postfix.push("analysis.ty = if modrm_byte >> 3 & 7 == crate::regs::SS as u8 { analysis::AnalysisType::Interpreted } else { analysis::AnalysisType::BlockBoundary };");
+    }
+    else if(encoding.custom_sti) {
         instruction_postfix.push("analysis.ty = analysis::AnalysisType::STI;");
     }
     else if(

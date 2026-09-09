@@ -852,6 +852,86 @@ static void test_sti_inhibit(void)
 	report("sti inhibit", ~0, 1);
 }
 
+static void test_irq_inhibit(void)
+{
+	static const u8 handler_code[] = {
+		0x50,                         /* PUSH AX */
+		0xb0, 0x20,                   /* MOV AL, 0x20 */
+		0xe6, 0x20,                   /* OUT 0x20, AL */
+		0xfe, 0x06, 0x00, 0x11,       /* INC byte [0x1100] */
+		0x58,                         /* POP AX */
+		0xcf,                         /* IRET */
+	};
+	u8 master_mask = inb(0x21);
+	u8 *handler = (u8 *)0x1000;
+	int i;
+
+	outb(master_mask & ~(1 << 1), 0x21);
+	*(u32 *)(0x09 * 4) = 0x1000;
+	for (i = 0; i < ARRAY_SIZE(handler_code); i++)
+		handler[i] = handler_code[i];
+
+	/* POP SS interrupt inhibition */
+	init_inregs(NULL);
+	*(u8 *)(0x1100) = 0;
+	/* Compile the page before testing the fallback */
+	MK_INSN(pop_ss_inhibit, "movl $300000, %esi\n\t"
+				"1: decl %esi\n\t"
+				"jnz 1b\n\t"
+				"cli\n\t"
+				"pushw %ss\n\t"
+				"movw $0x2001, %dx\n\t"
+				"movl $1, %eax\n\t"
+				"outl %eax, %dx\n\t"
+				"sti\n\t"
+				"popw %ss\n\t"
+				"movb 0x1100, %al\n\t"
+				"cli\n\t");
+	exec_in_big_real_mode(&insn_pop_ss_inhibit);
+	outb(0, 0x2001);
+	report("pop ss inhibit", R_AX | R_DX | R_SI,
+	       !(outregs.eax & 0xff) && *(u8 *)0x1100 == 1);
+
+	/* MOV SS interrupt inhibition */
+	init_inregs(NULL);
+	*(u8 *)(0x1100) = 0;
+	MK_INSN(mov_ss_inhibit, "movl $300000, %esi\n\t"
+				"1: decl %esi\n\t"
+				"jnz 1b\n\t"
+				"cli\n\t"
+				"movw %ss, %cx\n\t"
+				"movw $0x2001, %dx\n\t"
+				"movl $1, %eax\n\t"
+				"outl %eax, %dx\n\t"
+				"sti\n\t"
+				"movw %cx, %ss\n\t"
+				"movb 0x1100, %al\n\t"
+				"cli\n\t");
+	exec_in_big_real_mode(&insn_mov_ss_inhibit);
+	outb(0, 0x2001);
+	report("mov ss inhibit", R_AX | R_CX | R_DX | R_SI,
+	       !(outregs.eax & 0xff) && *(u8 *)0x1100 == 1);
+
+	/* STI interrupt inhibition during an I/O callback */
+	init_inregs(NULL);
+	*(u8 *)0x1100 = 0;
+	MK_INSN(sti_callback, "movl $300000, %esi\n\t"
+			      "1: decl %esi\n\t"
+			      "jnz 1b\n\t"
+			      "cli\n\t"
+			      "movw $0x2011, %dx\n\t"
+			      "movl $1, %eax\n\t"
+			      "sti\n\t"
+			      "outl %eax, %dx\n\t"
+			      "cli\n\t");
+	exec_in_big_real_mode(&insn_sti_callback);
+	outb(0, 0x2001);
+	report("sti callback IRQ delivered", R_AX | R_DX | R_SI,
+	       *(u8 *)0x1100 == 1);
+
+	outb(master_mask, 0x21);
+}
+
 static void test_imul(void)
 {
 	MK_INSN(imul8_1, "mov $2, %al\n\t"
@@ -1803,6 +1883,7 @@ void realmode_start(void)
 	test_iret();
 	test_int();
 	test_sti_inhibit();
+	test_irq_inhibit();
 	test_imul();
 	test_mul();
 	test_div();

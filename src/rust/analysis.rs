@@ -9,6 +9,7 @@ use crate::regs::{CS, DS, ES, FS, GS, SS};
 #[derive(PartialEq, Eq)]
 pub enum AnalysisType {
     Normal,
+    Interpreted,
     BlockBoundary,
     Jump {
         offset: i32,
