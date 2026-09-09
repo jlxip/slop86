@@ -100,6 +100,16 @@ SyncBuffer.prototype.get_state = function()
  */
 SyncBuffer.prototype.set_state = function(state)
 {
+    // Async buffers only save modified blocks.
+    if(Array.isArray(state[0]))
+    {
+        for(const [index, block] of state[0])
+        {
+            this.set(index * BLOCK_SIZE, block, () => {});
+        }
+        return;
+    }
+
     this.byteLength = state[0];
     this.buffer = state[1].slice().buffer;
 };
