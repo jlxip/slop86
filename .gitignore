@@ -17,6 +17,8 @@ images/
 *.fuse_hidden*
 *.DS_Store
 node_modules/
+__pycache__/
+*.py[cod]
 Cargo.lock
 build-head
 src/rust/gen/interpreter.rs

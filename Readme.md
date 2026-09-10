@@ -132,6 +132,7 @@ for a full setup on Debian or
   locally, make sure to serve it from a local webserver. You can use `make run`
   to serve the files using Python's http module with cross-origin isolation,
   enabling higher-resolution timers and reducing emulated hardware delays.
+  The local server disables HTTP caching and always serves fresh file contents.
   Other webservers should use HTTPS (or localhost) and send these response headers:
 
   ```http

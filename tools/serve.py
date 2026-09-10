@@ -7,7 +7,17 @@ import http.server
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    def send_head(self):
+        # Always return fresh bytes, even for previously cached resources.
+        for header in ("If-Modified-Since", "If-None-Match"):
+            if header in self.headers:
+                del self.headers[header]
+        return super().send_head()
+
     def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.send_header("Cross-Origin-Opener-Policy", "same-origin")
         self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         super().end_headers()
