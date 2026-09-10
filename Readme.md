@@ -130,7 +130,16 @@ for a full setup on Debian or
 - Run `make all` to build the optimized build (at `index.html`).
 - ROM and disk images are loaded via XHR, so if you want to try out `index.html`
   locally, make sure to serve it from a local webserver. You can use `make run`
-  to serve the files using Python's http module.
+  to serve the files using Python's http module with cross-origin isolation,
+  enabling higher-resolution timers and reducing emulated hardware delays.
+  Other webservers should use HTTPS (or localhost) and send these response headers:
+
+  ```http
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  ```
+
+  Cross-origin resources must allow access through CORS or CORP.
 - If you only want to embed v86 in a webpage you can use `libv86.js`. For usage,
   check out the [examples](examples/). You can download it from the [release section](https://github.com/copy/v86/releases).
 - For bundler-based setups (Vite/React/Next/Webpack), there is also an official npm package:

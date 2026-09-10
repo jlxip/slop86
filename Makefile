@@ -270,7 +270,7 @@ clean:
 	$(MAKE) -C $(NASM_TEST_DIR) clean
 
 run:
-	python3 -m http.server 2> /dev/null
+	python3 tools/serve.py 2> /dev/null
 
 update_version:
 	set -e ;\
