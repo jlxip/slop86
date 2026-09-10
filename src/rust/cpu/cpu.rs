@@ -261,6 +261,8 @@ pub const TLB_NO_USER: i32 = 1 << 2;
 pub const TLB_IN_MAPPED_RANGE: i32 = 1 << 3;
 pub const TLB_GLOBAL: i32 = 1 << 4;
 pub const TLB_HAS_CODE: i32 = 1 << 5;
+// Unlike MMIO, protected shadow RAM remains executable and directly readable.
+pub const TLB_WRITE_PROTECTED: i32 = 1 << 6;
 pub const IVT_SIZE: u32 = 0x400;
 pub const CPU_EXCEPTION_DE: i32 = 0;
 pub const CPU_EXCEPTION_DB: i32 = 1;
@@ -1971,7 +1973,7 @@ pub unsafe fn translate_address_write_jit(address: i32, wasm_table_index: u16) -
     let has_code = entry & TLB_HAS_CODE != 0;
     let phys_addr = (entry & !0xFFF ^ address) as u32 - memory::mem8 as u32;
     let page = Page::page_of(phys_addr);
-    if !has_code {
+    if !has_code || entry & TLB_WRITE_PROTECTED != 0 {
         return Ok(phys_addr);
     }
     let is_smc = jit::jit_page_has_wasm_table_index(page, wasm_table_index);
@@ -2231,7 +2233,8 @@ pub unsafe fn do_page_walk(
         | if allow_user { 0 } else { TLB_NO_USER }
         | if is_in_mapped_range { TLB_IN_MAPPED_RANGE } else { 0 }
         | if global && 0 != cr4 & CR4_PGE { TLB_GLOBAL } else { 0 }
-        | if has_code { TLB_HAS_CODE } else { 0 };
+        | if has_code { TLB_HAS_CODE } else { 0 }
+        | if memory::is_write_protected(high) { TLB_WRITE_PROTECTED } else { 0 };
 
     let tlb_entry = (high + memory::mem8 as u32) as i32 ^ page << 12 | info_bits as i32;
 
@@ -3509,7 +3512,7 @@ pub fn report_safe_write_jit_slow(address: u32, entry: i32) {
     else if entry & TLB_HAS_CODE != 0 {
         profiler::stat_increment(stat::SAFE_WRITE_SLOW_HAS_CODE);
     }
-    else if entry & TLB_READONLY != 0 {
+    else if entry & (TLB_READONLY | TLB_WRITE_PROTECTED) != 0 {
         profiler::stat_increment(stat::SAFE_WRITE_SLOW_READ_ONLY);
     }
     else if entry & TLB_NO_USER != 0 {
@@ -3535,7 +3538,7 @@ pub fn report_safe_read_write_jit_slow(address: u32, entry: i32) {
     else if entry & TLB_HAS_CODE != 0 {
         profiler::stat_increment(stat::SAFE_READ_WRITE_SLOW_HAS_CODE);
     }
-    else if entry & TLB_READONLY != 0 {
+    else if entry & (TLB_READONLY | TLB_WRITE_PROTECTED) != 0 {
         profiler::stat_increment(stat::SAFE_READ_WRITE_SLOW_READ_ONLY);
     }
     else if entry & TLB_NO_USER != 0 {
@@ -3606,7 +3609,8 @@ pub unsafe fn safe_read_slow_jit(
 
         ((scratch as i32) ^ addr) & !0xFFF
     }
-    else if memory::in_mapped_range(addr_low) {
+    else if memory::in_mapped_range(addr_low) || is_write && memory::is_write_protected(addr_low)
+    {
         let scratch = &raw mut jit_paging_scratch_buffer.0[0];
 
         match bitsize {
@@ -3763,6 +3767,11 @@ pub unsafe fn safe_write_slow_jit(
         let scratch = &raw mut jit_paging_scratch_buffer.0 as u32;
         dbg_assert!(scratch & 0xFFF == 0);
         ((scratch as i32) ^ addr) & !0xFFF
+    }
+    else if memory::is_write_protected(addr_low) {
+        // Discard the generated store without faulting or modifying executable ROM.
+        let scratch = &raw mut jit_paging_scratch_buffer.0 as i32;
+        (scratch ^ addr) & !0xFFF
     }
     else if memory::in_mapped_range(addr_low) {
         match bitsize {

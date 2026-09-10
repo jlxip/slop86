@@ -374,6 +374,7 @@ CPU.prototype.wasm_patch = function()
     this.write16 = get_import("write16");
     this.write32 = get_import("write32");
     this.in_mapped_range = get_import("in_mapped_range");
+    this.set_pam_write_mask = get_import("set_pam_write_mask");
 
     // used by nasmtests
     this.fpu_load_tag_word = get_import("fpu_load_tag_word");

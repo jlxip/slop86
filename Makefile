@@ -371,6 +371,7 @@ api-tests: build/v86-debug.wasm
 	./tests/api/floppy.js
 	./tests/api/floppy-read-id.js
 	./tests/api/pit-clock.js
+	./tests/api/pam.js
 	./tests/api/parallel.js
 	./tests/api/cdrom-insert-eject.js
 	./tests/api/iso9660.js

@@ -76,6 +76,40 @@ pub fn in_mapped_range(addr: u32) -> bool {
     return addr >= 0xA0000 && addr < 0xC0000 || addr >= unsafe { *memory_size };
 }
 
+// i440FX PAM controls shadow RAM writes in 16 KiB units from C0000 to FFFFF.
+// Firmware loading and snapshot unpacking write the backing buffer directly.
+static mut PAM_WRITE_MASK: u32 = 0xFFFF;
+
+#[no_mangle]
+pub unsafe fn set_pam_write_mask(mask: u32) {
+    if PAM_WRITE_MASK != mask {
+        PAM_WRITE_MASK = mask;
+        crate::cpu::cpu::full_clear_tlb();
+    }
+}
+
+pub fn is_write_protected(addr: u32) -> bool {
+    addr >= 0xC0000
+        && addr < 0x100000
+        && unsafe { PAM_WRITE_MASK & (1 << ((addr - 0xC0000) >> 14)) == 0 }
+}
+
+unsafe fn write_ram<T: Copy>(addr: u32, value: T) {
+    let size = std::mem::size_of::<T>() as u32;
+    if is_write_protected(addr) || is_write_protected(addr + size - 1) {
+        // Unaligned physical writes can straddle two PAM regions.
+        let bytes = &value as *const T as *const u8;
+        for i in 0..size {
+            if !is_write_protected(addr + i) {
+                *mem8.add((addr + i) as usize) = *bytes.add(i as usize);
+            }
+        }
+    }
+    else {
+        ptr::write_unaligned(mem8.add(addr as usize) as *mut T, value);
+    }
+}
+
 pub const VGA_LFB_ADDRESS: u32 = 0xE0000000;
 pub fn in_svga_lfb(addr: u32) -> bool {
     addr >= VGA_LFB_ADDRESS && addr <= unsafe { VGA_LFB_ADDRESS + (vga_memory_size - 1) }
@@ -196,9 +230,7 @@ pub unsafe fn write8(addr: u32, value: i32) {
     };
 }
 
-pub unsafe fn write8_no_mmap_or_dirty_check(addr: u32, value: i32) {
-    *mem8.offset(addr as isize) = value as u8
-}
+pub unsafe fn write8_no_mmap_or_dirty_check(addr: u32, value: i32) { write_ram(addr, value as u8) }
 
 #[no_mangle]
 pub unsafe fn write16(addr: u32, value: i32) {
@@ -211,7 +243,7 @@ pub unsafe fn write16(addr: u32, value: i32) {
     };
 }
 pub unsafe fn write16_no_mmap_or_dirty_check(addr: u32, value: i32) {
-    ptr::write_unaligned(mem8.offset(addr as isize) as *mut u16, value as u16)
+    write_ram(addr, value as u16)
 }
 
 #[no_mangle]
@@ -225,17 +257,11 @@ pub unsafe fn write32(addr: u32, value: i32) {
     }
 }
 
-pub unsafe fn write32_no_mmap_or_dirty_check(addr: u32, value: i32) {
-    ptr::write_unaligned(mem8.offset(addr as isize) as *mut i32, value)
-}
+pub unsafe fn write32_no_mmap_or_dirty_check(addr: u32, value: i32) { write_ram(addr, value) }
 
-pub unsafe fn write64_no_mmap_or_dirty_check(addr: u32, value: u64) {
-    ptr::write_unaligned(mem8.offset(addr as isize) as *mut u64, value)
-}
+pub unsafe fn write64_no_mmap_or_dirty_check(addr: u32, value: u64) { write_ram(addr, value) }
 
-pub unsafe fn write128_no_mmap_or_dirty_check(addr: u32, value: reg128) {
-    ptr::write_unaligned(mem8.offset(addr as isize) as *mut reg128, value)
-}
+pub unsafe fn write128_no_mmap_or_dirty_check(addr: u32, value: reg128) { write_ram(addr, value) }
 
 pub unsafe fn memset_no_mmap_or_dirty_check(addr: u32, value: u8, count: u32) {
     ptr::write_bytes(mem8.offset(addr as isize), value, count as usize);

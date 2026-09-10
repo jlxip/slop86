@@ -177,6 +177,7 @@ export function PCI(cpu)
         name: "82441FX PMC",
     };
     this.register_device(host_bridge);
+    this.update_pam();
 
     this.isa_bridge = {
         pci_id: 1 << 3,
@@ -265,6 +266,22 @@ PCI.prototype.set_state = function(state)
     this.pci_value.set(state[257]);
     this.pci_response.set(state[258]);
     this.pci_status.set(state[259]);
+    this.update_pam();
+};
+
+// Reads retain the existing firmware backing. With PAM write-enable clear,
+// writes go to the external ROM bus and must not modify shadow RAM.
+PCI.prototype.update_pam = function()
+{
+    const space = new Uint8Array(this.device_spaces[0].buffer);
+    let mask = space[0x59] & 0x20 ? 0xF000 : 0;
+    for(let i = 0; i < 6; i++)
+    {
+        const pam = space[0x5A + i];
+        if(pam & 2) mask |= 1 << (i * 2);
+        if(pam & 0x20) mask |= 2 << (i * 2);
+    }
+    this.cpu.set_pam_write_mask(mask);
 };
 
 PCI.prototype.pci_query = function()
@@ -341,6 +358,10 @@ PCI.prototype.pci_write8 = function(address, written)
             " value=" + h(written, 2), LOG_PCI);
 
     space[addr] = written;
+    if(bdf === 0 && addr < 0x60 && addr + 1 > 0x59)
+    {
+        this.update_pam();
+    }
 };
 
 PCI.prototype.pci_write16 = function(address, written)
@@ -372,6 +393,10 @@ PCI.prototype.pci_write16 = function(address, written)
             " value=" + h(written, 4), LOG_PCI);
 
     space[addr >>> 1] = written;
+    if(bdf === 0 && addr < 0x60 && addr + 2 > 0x59)
+    {
+        this.update_pam();
+    }
 };
 
 PCI.prototype.pci_write32 = function(address, written)
@@ -482,6 +507,10 @@ PCI.prototype.pci_write32 = function(address, written)
         dbg_log("PCI write dev=" + h(bdf >> 3, 2) + " (" + device.name + ") addr=" + h(addr, 4) +
                 " value=" + h(written >>> 0, 8), LOG_PCI);
         space[addr >>> 2] = written;
+        if(bdf === 0 && addr < 0x60 && addr + 4 > 0x59)
+        {
+            this.update_pam();
+        }
     }
 };
 
