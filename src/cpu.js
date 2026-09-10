@@ -951,6 +951,10 @@ CPU.prototype.reboot_internal = function()
     {
         this.devices.ps2.reset();
     }
+    if(this.devices.fdc)
+    {
+        this.devices.fdc.reset_fdc();
+    }
 
     this.load_bios();
 };
@@ -1918,6 +1922,7 @@ CPU.prototype.run_hardware_timers = function(acpi_enabled, now)
 {
     const pit_time = this.devices.pit.timer(now, false);
     const rtc_time = this.devices.rtc.timer(now, false);
+    const fdc_time = this.devices.fdc.timer(now);
 
     let acpi_time = 100;
     let apic_time = 100;
@@ -1927,7 +1932,7 @@ CPU.prototype.run_hardware_timers = function(acpi_enabled, now)
         apic_time = this.apic_timer(now);
     }
 
-    return Math.min(pit_time, rtc_time, acpi_time, apic_time);
+    return Math.min(pit_time, rtc_time, fdc_time, acpi_time, apic_time);
 };
 
 CPU.prototype.debug_init = function()

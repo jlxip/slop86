@@ -369,6 +369,7 @@ api-tests: build/v86-debug.wasm
 	./tests/api/state.js
 	./tests/api/reset.js
 	./tests/api/floppy.js
+	./tests/api/floppy-read-id.js
 	./tests/api/parallel.js
 	./tests/api/cdrom-insert-eject.js
 	./tests/api/iso9660.js

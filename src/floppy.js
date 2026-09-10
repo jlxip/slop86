@@ -17,6 +17,7 @@ import { h } from "./lib.js";
 import { dbg_assert, dbg_log } from "./log.js";
 import { CMOS_FLOPPY_DRIVE_TYPE } from "./rtc.js";
 import { SyncBuffer } from "./buffer.js";
+import { v86 } from "./main.js";
 
 // For Types Only
 import { CPU } from "./cpu.js";
@@ -26,6 +27,10 @@ import { IO } from "./io.js";
 // System resources
 const FDC_IRQ_CHANNEL = 6;
 const FDC_DMA_CHANNEL = 2;
+
+// Allow the guest to arm its interrupt handler before READ ID completes.
+// QEMU also uses a 20 ms delay for this command.
+const READ_ID_DELAY_MS = 20;
 
 /**
  * Floppy drive types
@@ -257,6 +262,7 @@ export function FloppyController(cpu, fda_image, fdb_image, fdc_config)
     this.fdc_config = CONFIG_EIS | CONFIG_EFIFO;    // see CONFIGURE, qemu: config
     this.precomp_trk = 0;           // see CONFIGURE
     this.eot = 0;                   // see READ/WRITE
+    this.read_id_deadline = -1;
 
     this.drives = [
         new FloppyDrive("fda", fdc_config?.fda, fda_image, CMOS_FDD_TYPE_1440),
@@ -400,6 +406,7 @@ FloppyController.prototype.enter_result_phase = function(fifo_len)
 
 FloppyController.prototype.reset_fdc = function()
 {
+    this.read_id_deadline = -1;
     dbg_log("resetting controller", LOG_FLOPPY);
     this.lower_irq("controller reset");
 
@@ -511,6 +518,7 @@ FloppyController.prototype.write_reg_dor = function(dor_byte)
     {
         if(!(dor_byte & DOR_NRESET))
         {
+            this.read_id_deadline = -1;
             dbg_log("enter RESET state", LOG_FLOPPY);
         }
     }
@@ -743,10 +751,33 @@ FloppyController.prototype.exec_format_track = function(args)
 
 FloppyController.prototype.exec_read_id = function(args)
 {
-    const head_sel = args[0];
-    const curr_drive = this.drives[this.curr_drive_no];
+    // Completing inside the command OUT races Windows 98's HSFLOP handler.
+    // Use the hardware timer loop so no callback can outlive a stopped VM.
+    this.msr &= ~MSR_RQM;
+    this.read_id_deadline = v86.microtick() + READ_ID_DELAY_MS;
+};
+
+FloppyController.prototype.timer = function(now)
+{
+    if(this.read_id_deadline < 0)
+    {
+        return 100;
+    }
+    if(now < this.read_id_deadline)
+    {
+        return this.read_id_deadline - now;
+    }
+    this.read_id_deadline = -1;
+
+    const head_sel = this.cmd_buffer[0];
+    const curr_drive = this.set_curr_drive_no(head_sel & DOR_SELMASK);
 
     curr_drive.curr_head = (head_sel >> 2) & 1;
+    if(!curr_drive.buffer)
+    {
+        this.end_read_write(SR0_ABNTERM, SR1_MA, 0);
+        return 100;
+    }
     if(curr_drive.max_sect !== 0)
     {
         curr_drive.curr_sect = (curr_drive.curr_sect % curr_drive.max_sect) + 1;
@@ -754,6 +785,7 @@ FloppyController.prototype.exec_read_id = function(args)
 
     // raise interrupt
     this.end_read_write(0, 0, 0);
+    return 100;
 };
 
 FloppyController.prototype.exec_specify = function(args)
@@ -1100,14 +1132,21 @@ FloppyController.prototype.get_state = function()
     state[43] = this.eot;
     state[44] = this.drives[0].get_state();
     state[45] = this.drives[1].get_state();
+    // Store a remaining duration, never a timestamp from the current host.
+    state[46] = this.read_id_deadline < 0 ? -1 : Math.max(0, this.read_id_deadline - v86.microtick());
     return state;
 };
 
 FloppyController.prototype.set_state = function(state)
 {
+    this.read_id_deadline = -1;
     if(typeof state[19] === "undefined")
     {
         // see comment above in get_state()
+        if(this.cmd_phase === CMD_PHASE_EXECUTION && (this.cmd_code & 0xBF) === CMD_READ_ID)
+        {
+            this.enter_command_phase();
+        }
         return;
     }
     this.sra = state[19];
@@ -1137,6 +1176,10 @@ FloppyController.prototype.set_state = function(state)
     this.eot = state[43];
     this.drives[0].set_state(state[44]);
     this.drives[1].set_state(state[45]);
+    if(state[46] >= 0)
+    {
+        this.read_id_deadline = v86.microtick() + state[46];
+    }
 };
 
 // class FloppyDrive ---------------------------------------------------------
