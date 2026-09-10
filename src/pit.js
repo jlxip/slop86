@@ -113,8 +113,12 @@ PIT.prototype.timer = function(now, no_irq)
     {
         if(this.counter_enabled[0] && this.did_rollover(0, now))
         {
+            const elapsed = now - this.counter_start_time[0];
             this.counter_start_value[0] = this.get_counter_value(0, now);
-            this.counter_start_time[0] = now;
+            // Keep fractional ticks: a 1 ms host clock and a reload of 1193
+            // otherwise lose the same fraction on every update and stall polls.
+            this.counter_start_time[0] = elapsed < 0 ? now :
+                this.counter_start_time[0] + Math.floor(elapsed * OSCILLATOR_FREQ) / OSCILLATOR_FREQ;
 
             dbg_log("pit interrupt. new value: " + this.counter_start_value[0], LOG_PIT);
 
