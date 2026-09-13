@@ -372,6 +372,7 @@ api-tests: build/v86-debug.wasm
 	./tests/api/floppy-read-id.js
 	./tests/api/dma-address.js
 	./tests/api/pit-clock.js
+	./tests/api/ps2-keyboard.js
 	./tests/api/pam.js
 	./tests/api/parallel.js
 	./tests/api/cdrom-insert-eject.js

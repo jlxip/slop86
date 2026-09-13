@@ -276,15 +276,25 @@ PS2.prototype.kbd_irq = function()
     this.next_byte_is_ready = true;
     this.next_byte_is_aux = false;
 
-    if(this.command_register & 1)
+    // Pulse for each new byte, but keep inhibited data available for polling.
+    this.cpu.device_lower_irq(1);
+    this.update_keyboard_irq();
+};
+
+PS2.prototype.update_keyboard_irq = function()
+{
+    // DOS KEYB disables the keyboard while processing its identification
+    // response. Raising IRQ1 before it reenables the port reenters the handler
+    // and makes it misidentify an enhanced keyboard as an AT keyboard.
+    if(this.next_byte_is_ready && !this.next_byte_is_aux &&
+        (this.command_register & 0x11) === 1)
     {
         dbg_log("Keyboard irq", LOG_PS2);
-
-        // Pulse the irq line
-        // Note: can't lower immediately after rising, so lower before rising
-        // http://www.os2museum.com/wp/ibm-ps2-model-50-keyboard-controller/
-        this.cpu.device_lower_irq(1);
         this.cpu.device_raise_irq(1);
+    }
+    else
+    {
+        this.cpu.device_lower_irq(1);
     }
 };
 
@@ -481,6 +491,7 @@ PS2.prototype.port60_write = function(write_byte)
     {
         this.command_register = write_byte;
         this.read_command_register = false;
+        this.update_keyboard_irq();
 
         // not sure, causes "spurious ack" in Linux
         //this.kbd_buffer.push(0xFA);
@@ -825,11 +836,13 @@ PS2.prototype.port64_write = function(write_byte)
         // Disable Keyboard
         dbg_log("Disable Keyboard", LOG_PS2);
         this.command_register |= 0x10;
+        this.update_keyboard_irq();
         break;
     case 0xAE:
         // Enable Keyboard
         dbg_log("Enable Keyboard", LOG_PS2);
         this.command_register &= ~0x10;
+        this.update_keyboard_irq();
         break;
     case 0xFE:
         dbg_log("CPU reboot via PS2");
