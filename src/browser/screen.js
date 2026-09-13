@@ -64,6 +64,7 @@ export function ScreenAdapter(options, screen_fill_buffer)
         scale_y = options.scale !== undefined ? options.scale : 1,
 
         base_scale = 1,
+        graphical_aspect_ratio = 1,
 
         changed_rows,
 
@@ -345,7 +346,7 @@ export function ScreenAdapter(options, screen_fill_buffer)
         this.set_size_text(80, 25);
         if(mode === MODE_GRAPHICAL_TEXT)
         {
-            this.set_size_graphical(720, 400, 720, 400);
+            this.set_size_graphical(720, 400, 720, 400, 4 / 3);
         }
 
         // initialize CSS scaling
@@ -533,6 +534,7 @@ export function ScreenAdapter(options, screen_fill_buffer)
         {
             text_screen.style.display = "block";
             graphic_screen.style.display = "none";
+            update_scale_text();
         }
         else
         {
@@ -541,6 +543,7 @@ export function ScreenAdapter(options, screen_fill_buffer)
 
             if(mode === MODE_GRAPHICAL_TEXT && changed_rows)
             {
+                this.set_size_graphical_text();
                 changed_rows.fill(1);
             }
         }
@@ -598,7 +601,9 @@ export function ScreenAdapter(options, screen_fill_buffer)
         const gfx_height = font_height * text_mode_height;
         const offscreen_extra_height = font_height * 2;
 
-        if(!offscreen_context || offscreen_context.canvas.width !== gfx_width ||
+        if(graphic_screen.width !== gfx_width || graphic_screen.height !== gfx_height ||
+            graphical_aspect_ratio !== 4 / 3 ||
+            !offscreen_context || offscreen_context.canvas.width !== gfx_width ||
             offscreen_context.canvas.height !== gfx_height ||
             offscreen_extra_context.canvas.height !== offscreen_extra_height)
         {
@@ -619,7 +624,7 @@ export function ScreenAdapter(options, screen_fill_buffer)
             }
 
             // resize DOM canvas graphic_screen
-            this.set_size_graphical(gfx_width, gfx_height, gfx_width, gfx_height);
+            this.set_size_graphical(gfx_width, gfx_height, gfx_width, gfx_height, 4 / 3);
 
             changed_rows.fill(1);
         }
@@ -668,7 +673,7 @@ export function ScreenAdapter(options, screen_fill_buffer)
         }
     };
 
-    this.set_size_graphical = function(width, height, buffer_width, buffer_height)
+    this.set_size_graphical = function(width, height, buffer_width, buffer_height, aspect_ratio = width / height)
     {
         if(DEBUG_SCREEN_LAYERS)
         {
@@ -681,6 +686,9 @@ export function ScreenAdapter(options, screen_fill_buffer)
 
         graphic_screen.style.display = "block";
 
+        graphical_aspect_ratio = DEBUG_SCREEN_LAYERS ? width / height : aspect_ratio;
+        graphic_screen.style.aspectRatio = String(graphical_aspect_ratio);
+        graphic_screen.style.setProperty("--vga-aspect-ratio", String(graphical_aspect_ratio));
         graphic_screen.width = width;
         graphic_screen.height = height;
 
@@ -702,6 +710,11 @@ export function ScreenAdapter(options, screen_fill_buffer)
         update_scale_graphic();
     };
 
+    this.get_aspect_ratio = function()
+    {
+        return mode === MODE_GRAPHICAL ? graphical_aspect_ratio : 4 / 3;
+    };
+
     this.set_scale = function(s_x, s_y)
     {
         scale_x = s_x;
@@ -713,12 +726,21 @@ export function ScreenAdapter(options, screen_fill_buffer)
 
     function update_scale_text()
     {
-        elem_set_scale(text_screen, scale_x, scale_y, true);
+        text_screen.style.width = "max-content";
+        text_screen.style.marginRight = "";
+        text_screen.style.marginBottom = "";
+        text_screen.style.height = "";
+        const width = text_screen.offsetWidth, height = text_screen.offsetHeight;
+        if(width && height)
+        {
+            elem_set_scale(text_screen, scale_x, scale_y * width / height / (4 / 3), true);
+        }
     }
 
     function update_scale_graphic()
     {
-        elem_set_scale(graphic_screen, scale_x * base_scale, scale_y * base_scale, false);
+        const pixel_aspect = graphic_screen.width / graphic_screen.height / graphical_aspect_ratio;
+        elem_set_scale(graphic_screen, scale_x * base_scale, scale_y * base_scale * pixel_aspect, false);
     }
 
     function elem_set_scale(elem, scale_x, scale_y, use_scale)
@@ -728,7 +750,7 @@ export function ScreenAdapter(options, screen_fill_buffer)
             return;
         }
 
-        elem.style.width = "";
+        elem.style.width = use_scale ? "max-content" : "";
         elem.style.height = "";
 
         if(use_scale)
@@ -736,7 +758,8 @@ export function ScreenAdapter(options, screen_fill_buffer)
             elem.style.transform = "";
         }
 
-        var rectangle = elem.getBoundingClientRect();
+        const width = use_scale ? elem.offsetWidth : graphic_screen.width;
+        const height = use_scale ? elem.offsetHeight : graphic_screen.height;
 
         if(use_scale)
         {
@@ -746,6 +769,11 @@ export function ScreenAdapter(options, screen_fill_buffer)
             scale_str += scale_y === 1 ? "" : " scaleY(" + scale_y + ")";
 
             elem.style.transform = scale_str;
+            elem.style.transformOrigin = "top left";
+            // Reserve the transformed area for surrounding controls and centering.
+            elem.style.marginRight = width * (scale_x - 1) + "px";
+            elem.style.marginBottom = height * (scale_y - 1) + "px";
+            return;
         }
         else
         {
@@ -771,14 +799,10 @@ export function ScreenAdapter(options, screen_fill_buffer)
             }
         }
 
-        if(scale_x !== 1)
-        {
-            elem.style.width = rectangle.width * scale_x + "px";
-        }
-        if(scale_y !== 1)
-        {
-            elem.style.height = rectangle.height * scale_y + "px";
-        }
+        // Set both dimensions: an auto dimension would preserve the canvas's
+        // intrinsic (square-pixel) ratio instead of the display aspect.
+        elem.style.width = width * scale_x + "px";
+        elem.style.height = height * scale_y + "px";
     }
 
     this.update_cursor_scanline = function(start, end, enabled)

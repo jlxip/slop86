@@ -103,6 +103,7 @@ export function VGAScreen(cpu, bus, screen, vga_memory_size)
      * @type {number}
      */
     this.screen_height = 0;
+    this.screen_aspect_ratio = 0;
 
     /**
      * Logical width in pixels of virtual buffer available for panning
@@ -1158,7 +1159,10 @@ VGAScreen.prototype.set_size_graphical = function(width, height, virtual_width, 
     virtual_width = Math.max(virtual_width, 1);
     virtual_height = Math.max(virtual_height, 1);
 
+    // Legacy VGA scanout fills a 4:3 monitor; VBE modes use square pixels.
+    const aspect_ratio = this.svga_enabled ? width / height : 4 / 3;
     const needs_update =
+        this.screen_aspect_ratio !== aspect_ratio ||
         this.screen_width !== width ||
         this.screen_height !== height ||
         this.virtual_width !== virtual_width ||
@@ -1166,6 +1170,7 @@ VGAScreen.prototype.set_size_graphical = function(width, height, virtual_width, 
 
     if(needs_update)
     {
+        this.screen_aspect_ratio = aspect_ratio;
         this.screen_width = width;
         this.screen_height = height;
         this.virtual_width = virtual_width;
@@ -1186,7 +1191,7 @@ VGAScreen.prototype.set_size_graphical = function(width, height, virtual_width, 
             // TODO: nodejs
         }
 
-        this.screen.set_size_graphical(width, height, virtual_width, virtual_height);
+        this.screen.set_size_graphical(width, height, virtual_width, virtual_height, aspect_ratio);
         this.bus.send("screen-set-size", [width, height, bpp]);
     }
 };

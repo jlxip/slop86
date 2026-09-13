@@ -755,6 +755,9 @@ export class V86 {
      */
     screen_make_screenshot(): HTMLElement;
 
+    /** Intended display aspect ratio before user scaling; null without a browser screen. */
+    screen_get_aspect_ratio(): number | null;
+
     /**
      * Set the scaling level of the emulated screen.
      *

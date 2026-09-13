@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>VGA display aspect regression</title>
+<link rel="stylesheet" href="../../v86.css">
+<style>
+.host { display: inline-block; vertical-align: top; transform-origin: top left; }
+.text { white-space: pre; font: 16px/16px monospace; transform-origin: top left; }
+canvas { display: block; }
+</style>
+<pre id="result">Running…</pre>
+<button id="fullscreen-test">Test fullscreen</button>
+<script type="module">
+import { run, run_fullscreen } from "./screen-aspect.js";
+document.querySelector("#fullscreen-test").onclick = async () => {
+    try { window.fullscreenResult = { checks: await run_fullscreen() }; }
+    catch(error) { window.fullscreenResult = { error: String(error.stack || error) }; }
+    document.querySelector("#result").textContent = JSON.stringify(window.fullscreenResult);
+};
+try {
+    window.testResult = { checks: run() };
+    document.querySelector("#result").textContent = JSON.stringify(window.testResult);
+} catch(error) {
+    window.testResult = { error: String(error.stack || error) };
+    document.querySelector("#result").textContent = window.testResult.error;
+}
+</script>

@@ -1124,6 +1124,16 @@ V86.prototype.screen_make_screenshot = function()
 };
 
 /**
+ * Get the intended display aspect ratio, independently of framebuffer size
+ * and user scaling. Returns null without a browser screen adapter.
+ * @return {?number}
+ */
+V86.prototype.screen_get_aspect_ratio = function()
+{
+    return this.screen_adapter instanceof ScreenAdapter ? this.screen_adapter.get_aspect_ratio() : null;
+};
+
+/**
  * Set the scaling level of the emulated screen.
  *
  * @param {number} sx
