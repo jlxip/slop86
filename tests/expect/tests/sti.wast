@@ -23,6 +23,7 @@
   (import "e" "instr_F4" (func $e.instr_F4 (type $t0)))
   (import "e" "instr_FB_without_fault" (func $e.instr_FB_without_fault (type $t4)))
   (import "e" "trigger_gp_jit" (func $e.trigger_gp_jit (type $t2)))
+  (import "e" "set_interrupt_shadow" (func $e.set_interrupt_shadow (type $t1)))
   (import "e" "handle_irqs" (func $e.handle_irqs (type $t0)))
   (import "e" "exit_jit" (func $e.exit_jit (type $t0)))
   (import "e" "m" (memory {normalised output}))
@@ -152,6 +153,8 @@
                   (i32.const 0)
                   (i32.const 0))
                 (br $B1)))
+            (call $e.set_interrupt_shadow
+              (i32.const 1))
             (i32.store
               (i32.const 560)
               (i32.or
@@ -194,6 +197,8 @@
             (i32.store
               (i32.const 92)
               (get_local $l7))
+            (call $e.set_interrupt_shadow
+              (i32.const 0))
             (call $e.handle_irqs)
             (i32.store
               (i32.const 664)
