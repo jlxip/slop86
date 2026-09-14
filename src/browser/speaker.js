@@ -31,46 +31,93 @@ export function SpeakerAdapter(bus)
         return;
     }
 
-    var SpeakerDAC = window.AudioWorklet ? SpeakerWorkletDAC : SpeakerBufferSourceDAC;
-
     /** @const */
     this.bus = bus;
-
     this.audio_context = window.AudioContext ? new AudioContext() : new webkitAudioContext();
+    const context = this.audio_context;
+    // Prime the silent context before suspension: WebKit initializes its audio
+    // destination lazily. No worklet may load until suspension has completed.
+    this.preparing = true;
+    const suspended = context.resume().then(() =>
+    {
+        this.preparing = false;
+        if(this.audio_context === context) return context.suspend();
+    });
+    this.running = true;
+    this.initialized = false;
 
     /** @const */
-    this.mixer = new SpeakerMixer(bus, this.audio_context);
-
+    this.mixer = new SpeakerMixer(bus, context);
     /** @const */
-    this.pcspeaker = new PCSpeaker(bus, this.audio_context, this.mixer);
+    this.pcspeaker = new PCSpeaker(bus, context, this.mixer);
+    const dac = window.AudioWorklet ?
+        new SpeakerWorkletDAC(bus, context, this.mixer, suspended) :
+        new SpeakerBufferSourceDAC(bus, context, this.mixer);
+    this.dac = dac;
 
-    this.dac = new SpeakerDAC(bus, this.audio_context, this.mixer);
-
-    this.pcspeaker.start();
+    this.ready = (dac instanceof SpeakerWorkletDAC ? dac.ready : suspended).then(() =>
+    {
+        if(this.audio_context !== context) return;
+        this.pcspeaker.start();
+        this.initialized = true;
+    }).catch(error =>
+    {
+        if(this.audio_context === context) console.warn("Could not initialize audio", error);
+    });
+    this.resume();
 
     bus.register("emulator-stopped", function()
     {
-        this.audio_context.suspend();
+        this.running = false;
+        this.audio_context && this.audio_context.suspend().catch(() => {});
     }, this);
-
-    bus.register("emulator-started", function()
-    {
-        this.audio_context.resume();
-    }, this);
-
+    bus.register("emulator-started", function() { this.resume(); }, this);
     bus.register("speaker-confirm-initialized", function()
     {
         bus.send("speaker-has-initialized");
     }, this);
+    // Mixer controls and DAC bus handlers are available synchronously.
     bus.send("speaker-has-initialized");
 }
 
+// All resume requests, including user gestures, must wait for the worklet.
+SpeakerAdapter.prototype.resume = function()
+{
+    this.running = true;
+    if(!this.ready) return Promise.resolve();
+    // A later user gesture must be able to unlock an autoplay-blocked context.
+    // This is safe only during priming, before any worklet module is loaded.
+    if(this.preparing && this.audio_context)
+    {
+        this.audio_context.resume().catch(() => {});
+    }
+    const start = () =>
+    {
+        if(this.running && this.initialized && this.audio_context)
+        {
+            return this.audio_context.resume();
+        }
+        return Promise.resolve();
+    };
+    // Keep an already-ready resume inside its user gesture for autoplay policies.
+    return (this.initialized ? start() : this.ready.then(start)).catch(error =>
+    {
+        if(this.audio_context) console.warn("Could not resume audio", error);
+    });
+};
+
 SpeakerAdapter.prototype.destroy = function()
 {
-    this.audio_context && this.audio_context.close();
+    const context = this.audio_context;
+    this.running = false;
     this.audio_context = null;
-    this.dac && this.dac.node_processor && this.dac.node_processor.port.close();
+    if(this.dac instanceof SpeakerWorkletDAC)
+    {
+        this.dac.destroyed = true;
+        this.dac.node_processor && this.dac.node_processor.port.close();
+    }
     this.dac = null;
+    return context ? context.close().catch(() => {}) : Promise.resolve();
 };
 
 /**
@@ -453,8 +500,9 @@ PCSpeaker.prototype.start = function()
  * @param {!BusConnector} bus
  * @param {!AudioContext} audio_context
  * @param {!SpeakerMixer} mixer
+ * @param {!Promise<void>} suspended
  */
-function SpeakerWorkletDAC(bus, audio_context, mixer)
+function SpeakerWorkletDAC(bus, audio_context, mixer, suspended)
 {
     /** @const */
     this.bus = bus;
@@ -466,6 +514,7 @@ function SpeakerWorkletDAC(bus, audio_context, mixer)
 
     this.enabled = false;
     this.sampling_rate = 48000;
+    this.destroyed = false;
 
     // Worklet
 
@@ -766,12 +815,13 @@ function SpeakerWorkletDAC(bus, audio_context, mixer)
     // Placeholder pass-through node to connect to, when worklet node is not ready yet.
     this.node_output = this.audio_context.createGain();
 
-    this.audio_context
-        .audioWorklet
-        .addModule(worklet_url)
-        .then(() =>
+    this.ready = suspended.then(() =>
     {
-        URL.revokeObjectURL(worklet_url);
+        if(this.destroyed || this.audio_context.state === "closed") return;
+        return this.audio_context.audioWorklet.addModule(worklet_url);
+    }).then(() =>
+    {
+        if(this.destroyed || this.audio_context.state === "closed") return;
 
         this.node_processor = new AudioWorkletNode(this.audio_context, "dac-processor",
         {
@@ -804,7 +854,7 @@ function SpeakerWorkletDAC(bus, audio_context, mixer)
         // Graph
 
         this.node_processor.connect(this.node_output);
-    });
+    }).finally(() => URL.revokeObjectURL(worklet_url));
 
     // Interface
 

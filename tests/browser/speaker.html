@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Speaker lifecycle regression</title>
+<button id="run">Run audio tests</button>
+<pre id="result"></pre>
+<script type="module">
+import { run } from "./speaker.js";
+document.querySelector("#run").onclick = () => {
+    window.audioTest = run();
+    window.audioTest.then(result => document.querySelector("#result").textContent = JSON.stringify(result),
+        error => document.querySelector("#result").textContent = String(error.stack));
+};
+</script>

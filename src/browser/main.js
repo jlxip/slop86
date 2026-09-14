@@ -3248,7 +3248,7 @@ function init_ui(profile, settings, emulator)
     {
         if(emulator.is_running() && emulator.speaker_adapter?.audio_context?.state === "suspended")
         {
-            emulator.speaker_adapter.audio_context.resume();
+            emulator.speaker_adapter.resume();
         }
 
         // No need to lock the mouse if the guest tracks the host cursor

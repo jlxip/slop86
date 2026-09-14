@@ -846,7 +846,7 @@ V86.prototype.destroy = async function()
     this.mouse_adapter && this.mouse_adapter.destroy();
     this.screen_adapter && this.screen_adapter.destroy();
     this.serial_adapter && this.serial_adapter.destroy();
-    this.speaker_adapter && this.speaker_adapter.destroy();
+    if(this.speaker_adapter) await this.speaker_adapter.destroy();
     this.virtio_console_adapter && this.virtio_console_adapter.destroy();
     this.modem && this.modem.destroy();
 };
