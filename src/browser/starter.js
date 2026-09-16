@@ -117,24 +117,20 @@ export function V86(options)
         {
             /* global __dirname */
 
-            return new Promise(resolve => {
+            return new Promise((resolve, reject) => {
                 let v86_bin = DEBUG ? "v86-debug.wasm" : "v86.wasm";
-                let v86_bin_fallback = "v86-fallback.wasm";
 
                 if(options.wasm_path)
                 {
                     v86_bin = options.wasm_path;
-                    v86_bin_fallback = v86_bin.replace("v86.wasm", "v86-fallback.wasm");
                 }
                 else if(typeof window === "undefined" && typeof __dirname === "string")
                 {
                     v86_bin = __dirname + "/" + v86_bin;
-                    v86_bin_fallback = __dirname + "/" + v86_bin_fallback;
                 }
                 else
                 {
                     v86_bin = "build/" + v86_bin;
-                    v86_bin_fallback = "build/" + v86_bin_fallback;
                 }
 
                 load_file(v86_bin, {
@@ -148,13 +144,7 @@ export function V86(options)
                         }
                         catch(err)
                         {
-                            load_file(v86_bin_fallback, {
-                                    done: async bytes => {
-                                        const { instance } = await WebAssembly.instantiate(bytes, env);
-                                        this.wasm_source = bytes;
-                                        resolve(instance.exports);
-                                    },
-                                });
+                            reject(err);
                         }
                     },
                     progress: e =>

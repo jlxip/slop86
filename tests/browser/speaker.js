@@ -18,7 +18,7 @@ export async function run()
         adapter.mixer.set_volume(0, undefined);
         return { adapter, bus, context: adapter.audio_context };
     }
-    const prototype = AudioWorklet.prototype, addModule = prototype.addModule;
+    const prototype = window.AudioWorklet.prototype, add_module = prototype.addModule;
     let release, entered;
     async function delayed(action)
     {
@@ -27,11 +27,11 @@ export async function run()
         prototype.addModule = function(...args)
         {
             entered();
-            return addModule.apply(this, args).then(() => gate);
+            return add_module.apply(this, args).then(() => gate);
         };
         const current = make();
         try { await called; await action(current); }
-        finally { release(); prototype.addModule = addModule; await current.adapter.destroy(); }
+        finally { release(); prototype.addModule = add_module; await current.adapter.destroy(); }
     }
     console.log("Audio delayed start/stop");
     await delayed(async ({adapter, bus, context}) =>
@@ -72,7 +72,7 @@ export async function run()
         check(warnings === 1 && revoked === 1, "Module failure was not reported/cleaned up");
         check(failed.context.state === "suspended" && !failed.adapter.initialized, "Failed module started audio");
     }
-    finally { await failed.adapter.destroy(); prototype.addModule = addModule; console.warn = warn; URL.revokeObjectURL = revoke; }
+    finally { await failed.adapter.destroy(); prototype.addModule = add_module; console.warn = warn; URL.revokeObjectURL = revoke; }
     const Worklet = window.AudioWorklet;
     window.AudioWorklet = undefined;
     const fallback = make();

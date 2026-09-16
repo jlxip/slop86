@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::mem::transmute;
 
 use crate::leb::{
@@ -85,7 +85,7 @@ pub struct WasmBuilder {
     // label for referencing block/if/loop constructs directly via branch instructions
     next_label: Label,
     label_stack: Vec<Label>,
-    label_to_depth: HashMap<Label, usize>,
+    label_to_depth: BTreeMap<Label, usize>,
 
     free_locals_i32: Vec<WasmLocal>,
     free_locals_i64: Vec<WasmLocalI64>,
@@ -107,7 +107,7 @@ impl WasmLocalI64 {
     pub fn idx(&self) -> u8 { self.0 }
 }
 
-#[derive(Copy, Clone, Eq, Hash, PartialEq)]
+#[derive(Copy, Clone, Eq, Ord, PartialEq, PartialOrd)]
 pub struct Label(u32);
 impl Label {
     const ZERO: Label = Label(0);
@@ -129,7 +129,7 @@ impl WasmBuilder {
 
             initial_static_size: 0,
 
-            label_to_depth: HashMap::new(),
+            label_to_depth: BTreeMap::new(),
             label_stack: Vec::new(),
             next_label: Label::ZERO,
 

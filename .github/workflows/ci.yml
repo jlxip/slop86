@@ -51,9 +51,6 @@ jobs:
       - name: Build all
         run: make all
 
-      - name: Build fallback
-        run: make build/v86-fallback.wasm
-
       - name: rustfmt check
         run: make rustfmt
 
