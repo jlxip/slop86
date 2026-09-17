@@ -369,6 +369,7 @@ api-tests: build/v86-debug.wasm
 	./tests/api/dma-address.js
 	./tests/api/pit-clock.js
 	./tests/api/ps2-keyboard.js
+	node tests/api/vmware-mouse.js
 	./tests/api/pam.js
 	./tests/api/parallel.js
 	./tests/api/cdrom-insert-eject.js

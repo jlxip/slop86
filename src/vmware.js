@@ -205,7 +205,7 @@ VMwareMouse.prototype.push_absolute = function(wheel, move_only)
 // positive y is up, like PS/2.
 VMwareMouse.prototype.push_relative = function(dx, dy, wheel, move_only)
 {
-    if(!this.enabled)
+    if(!this.enabled || !this.absolute)
     {
         return;
     }
@@ -232,6 +232,9 @@ VMwareMouse.prototype.push_packet = function(status, x, y, wheel, move_only)
     }
     this.queue.push(status, x, y, wheel);
     this.tail_is_move = move_only;
+    // Exactly one PS/2 notification per queued record. Coalesced moves above
+    // reuse their existing notification; button releases must never lag behind.
+    this.cpu.devices.ps2.mouse_send_notification();
 };
 
 VMwareMouse.prototype.port_read32 = function()

@@ -41,7 +41,8 @@ export function PS2(cpu, bus)
 
     this.bus.register("mouse-wheel", function(data)
     {
-        if(!this.have_mouse || !this.use_mouse || !this.mouse_stream_active())
+        if(this.cpu.devices.vmware?.enabled && this.cpu.devices.vmware.absolute ||
+            !this.have_mouse || !this.use_mouse || !this.mouse_stream_active())
         {
             return;
         }
@@ -310,7 +311,8 @@ PS2.prototype.kbd_send_code = function(code)
 
 PS2.prototype.mouse_send_delta = function(delta_x, delta_y)
 {
-    if(!this.have_mouse || !this.use_mouse)
+    if(this.cpu.devices.vmware?.enabled && this.cpu.devices.vmware.absolute ||
+        !this.have_mouse || !this.use_mouse)
     {
         return;
     }
@@ -347,7 +349,8 @@ PS2.prototype.mouse_send_delta = function(delta_x, delta_y)
 
 PS2.prototype.mouse_send_click = function(left, middle, right)
 {
-    if(!this.have_mouse || !this.use_mouse)
+    if(this.cpu.devices.vmware?.enabled && this.cpu.devices.vmware.absolute ||
+        !this.have_mouse || !this.use_mouse)
     {
         return;
     }
@@ -360,13 +363,23 @@ PS2.prototype.mouse_send_click = function(left, middle, right)
     }
 };
 
-PS2.prototype.send_mouse_packet = function(dx, dy)
+// VMware packets carry their own buttons and motion. PS/2 only wakes the driver.
+PS2.prototype.mouse_send_notification = function()
+{
+    if(this.have_mouse && this.use_mouse && this.mouse_stream_active())
+    {
+        this.send_mouse_packet(0, 0, 0);
+    }
+};
+
+/** @param {number} dx @param {number} dy @param {number=} buttons */
+PS2.prototype.send_mouse_packet = function(dx, dy, buttons)
 {
     var info_byte =
             (dy < 0) << 5 |
             (dx < 0) << 4 |
             1 << 3 |
-            this.mouse_clicks,
+            (buttons === undefined ? this.mouse_clicks : buttons),
         delta_x = dx,
         delta_y = dy;
 
