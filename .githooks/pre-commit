@@ -1,0 +1,13 @@
+#!/bin/sh
+set -eu
+cd "$(git rev-parse --show-toplevel)"
+# Check the exact index without changing the working tree or its build outputs.
+snapshot=$(mktemp -d "${TMPDIR:-/tmp}/slop86-pre-commit.XXXXXX")
+trap 'rm -rf "$snapshot"' EXIT HUP INT TERM
+git archive --format=tar --output="$snapshot/index.tar" "$(git write-tree)"
+tar -xf "$snapshot/index.tar" -C "$snapshot"
+mkdir -p "$snapshot/closure-compiler"
+cp closure-compiler/compiler.jar "$snapshot/closure-compiler/compiler.jar"
+cd "$snapshot"
+node --check src/main.js
+make worker-url-test build/libv86.mjs

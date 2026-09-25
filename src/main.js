@@ -20,6 +20,9 @@ export function v86(bus, wasm)
     this.tick_counter = 0;
     this.worker = null;
 
+    /** @type {?function()} */
+    this.worker_cleanup = null;
+
     /** @type {CPU} */
     this.cpu = new CPU(bus, wasm, () => { this.idle && this.next_tick(0); });
 
@@ -143,9 +146,33 @@ else if(typeof Worker !== "undefined")
     v86.prototype.register_yield = function()
     {
         const url = URL.createObjectURL(new Blob(["(" + the_worker.toString() + ")()"], { type: "text/javascript" }));
-        this.worker = new Worker(url);
-        this.worker.onmessage = e => this.yield_callback(e.data);
-        URL.revokeObjectURL(url);
+        let released = false;
+        const release = () =>
+        {
+            if(!released)
+            {
+                released = true;
+                URL.revokeObjectURL(url);
+            }
+        };
+        this.worker_cleanup = release;
+        try
+        {
+            this.worker = new Worker(url);
+        }
+        catch(error)
+        {
+            release();
+            this.worker_cleanup = null;
+            throw error;
+        }
+        // Construction can return before the browser has loaded the blob.
+        this.worker.onmessage = e =>
+        {
+            release();
+            this.yield_callback(e.data);
+        };
+        this.worker.onerror = release;
     };
 
     v86.prototype.yield = function(t, tick)
@@ -157,6 +184,8 @@ else if(typeof Worker !== "undefined")
     {
         this.worker && this.worker.terminate();
         this.worker = null;
+        this.worker_cleanup && this.worker_cleanup();
+        this.worker_cleanup = null;
     };
 }
 //else if(typeof window !== "undefined" && typeof postMessage !== "undefined")

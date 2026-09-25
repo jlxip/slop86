@@ -360,7 +360,7 @@ rust-test: $(RUST_FILES)
 rust-test-intensive:
 	QUICKCHECK_TESTS=100000000 make rust-test
 
-api-tests: build/v86-debug.wasm
+api-tests: build/v86-debug.wasm worker-url-test
 	./tests/api/clean-shutdown.js
 	./tests/api/state.js
 	./tests/api/reset.js
@@ -419,3 +419,10 @@ denodoc:
 	deno doc --html --name="v86 API" --output=./docs/api ./v86.d.ts
 
 .PHONY: tests
+
+.PHONY: worker-url-test hooks
+worker-url-test:
+	node --experimental-vm-modules tests/api/worker-url.js
+
+hooks:
+	git config core.hooksPath .githooks
