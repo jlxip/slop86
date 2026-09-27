@@ -48,7 +48,8 @@ export async function run()
         check(bus.initialized === 1, "Initialization handshake missing");
         console.log("Audio resuming after delayed module");
         await adapter.resume(); check(context.state === "running", "Resume did not start audio");
-        const before = context.currentTime; await new Promise(resolve => setTimeout(resolve, 100));
+        const before = context.currentTime, deadline = performance.now() + 2000;
+        while(context.currentTime <= before && performance.now() < deadline) await tick();
         check(context.currentTime > before, "Audio renderer is not advancing");
     });
     await delayed(async ({adapter, bus, context}) =>
