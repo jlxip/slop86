@@ -10,4 +10,4 @@ mkdir -p "$snapshot/closure-compiler"
 cp closure-compiler/compiler.jar "$snapshot/closure-compiler/compiler.jar"
 cd "$snapshot"
 node --check src/main.js
-make worker-url-test disk-adapter-test
+make worker-url-test disk-adapter-test stop-test

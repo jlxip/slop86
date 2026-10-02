@@ -360,7 +360,7 @@ rust-test: $(RUST_FILES)
 rust-test-intensive:
 	QUICKCHECK_TESTS=100000000 make rust-test
 
-api-tests: build/v86-debug.wasm worker-url-test disk-adapter-test
+api-tests: build/v86-debug.wasm worker-url-test disk-adapter-test stop-test
 	./tests/api/clean-shutdown.js
 	./tests/api/state.js
 	./tests/api/reset.js
@@ -431,3 +431,8 @@ hooks:
 disk-adapter-test: build/v86-debug.wasm build/v86.wasm build/libv86.mjs
 	node tests/api/disk-adapter.js
 	TEST_RELEASE_BUILD=1 node tests/api/disk-adapter.js
+
+.PHONY: stop-test
+stop-test: build/v86-debug.wasm build/v86.wasm build/libv86.mjs
+	node tests/api/stop.js
+	TEST_RELEASE_BUILD=1 node tests/api/stop.js

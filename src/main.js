@@ -79,6 +79,8 @@ v86.prototype.stop = function()
     if(this.running)
     {
         this.stopping = true;
+        // Wake the yield Worker instead of waiting for its pending idle timer.
+        this.next_tick(0);
     }
 };
 
