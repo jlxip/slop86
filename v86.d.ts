@@ -63,6 +63,38 @@ type V86BufferImage =
     //| { buffer: File; async?: boolean; }; // only in browsers: https://developer.mozilla.org/en-US/docs/Web/API/File
 
 /**
+ * An application-owned disk backend, used directly without copying its image.
+ * See docs/disk-adapter.md for loading, IO, caching and snapshot requirements.
+ */
+export interface V86DiskAdapter
+{
+    /** Positive safe integer, in bytes; available before load(). */
+    byteLength: number;
+
+    /** Assigned by V86 before load(); call once when ready, synchronously or asynchronously. */
+    onload?: (event?: { buffer: unknown }) => void;
+    load(): void;
+
+    /** Complete with exactly length bytes, synchronously or asynchronously. */
+    get(start: number, length: number, done: (bytes: Uint8Array) => void,
+        options?: { signal?: AbortSignal }): void;
+    /** Complete only after the write has finished. */
+    set(start: number, bytes: Uint8Array, done: () => void): void;
+    /** Synchronous cache lookup; return undefined on a miss. */
+    get_from_cache(start: number, length: number): Uint8Array | undefined;
+    /** Read and cache a range; used to preload the hard disk's first sector. */
+    get_and_cache(start: number, length: number, done: (bytes: Uint8Array) => void): void;
+
+    /** Snapshot data supported by V86's state serializer, in an adapter-defined array. */
+    get_state(): unknown[];
+    /** Restore the array returned by get_state(), on this same backend. */
+    set_state(state: unknown[]): void;
+}
+
+/** A disk image whose IO and persistence are owned by the application. */
+export type V86DiskAdapterImage = { disk_adapter: V86DiskAdapter };
+
+/**
  * The type of disk/bios/state images.
  *
  * Note that bios, initial state, bzimage, initrd, multiboot and floppy disk
@@ -73,7 +105,7 @@ type V86BufferImage =
  * has a performance overhead compared to HTTP compression, but will result in
  * better compression ration.
  */
-export type V86Image = V86AsyncFileImage | V86SyncFileImage | V86BufferImage;
+export type V86Image = V86AsyncFileImage | V86SyncFileImage | V86BufferImage | V86DiskAdapterImage;
 
 /**
  * Config for virtio/serial console.

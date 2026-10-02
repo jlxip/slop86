@@ -741,7 +741,16 @@ export function buffer_from_object(obj, zstd_decompress_worker)
 {
     // TODO: accept Uint8Array, ArrayBuffer, File, url rather than { url }
 
-    if(obj.buffer instanceof ArrayBuffer)
+    if(obj.disk_adapter)
+    {
+        const adapter = obj.disk_adapter;
+        if(!Number.isSafeInteger(adapter.byteLength) || adapter.byteLength <= 0 ||
+            typeof adapter.load !== "function" || typeof adapter.get !== "function" ||
+            typeof adapter.set !== "function" || typeof adapter.get_from_cache !== "function")
+            throw new Error("Invalid encrypted disk adapter");
+        return adapter;
+    }
+    else if(obj.buffer instanceof ArrayBuffer)
     {
         return new SyncBuffer(obj.buffer);
     }

@@ -62,6 +62,7 @@ list of emulated hardware:
 
 [How it works](docs/how-it-works.md) —
 [Networking](docs/networking.md) —
+[External disk adapters](docs/disk-adapter.md) —
 [Dial-up modem networking](docs/modem.md) —
 [Alpine Linux guest setup](tools/docker/alpine/) —
 [Arch Linux guest setup](docs/archlinux.md) —
