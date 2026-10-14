@@ -360,7 +360,10 @@ rust-test: $(RUST_FILES)
 rust-test-intensive:
 	QUICKCHECK_TESTS=100000000 make rust-test
 
-api-tests: build/v86-debug.wasm worker-url-test disk-adapter-test stop-test
+trap-flag-test: build/v86-debug.wasm
+	node tests/api/trap-flag.js
+
+api-tests: build/v86-debug.wasm worker-url-test disk-adapter-test stop-test trap-flag-test
 	./tests/api/clean-shutdown.js
 	./tests/api/state.js
 	./tests/api/reset.js

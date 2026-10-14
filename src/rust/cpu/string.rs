@@ -15,7 +15,7 @@ use crate::cpu::cpu::{
     io_port_write8, read_reg16, read_reg32, safe_read16, safe_read32s, safe_read8, safe_write16,
     safe_write32, safe_write8, set_reg_asize, test_privileges_for_io, translate_address_read,
     translate_address_write_and_can_skip_dirty, writable_or_pagefault, write_reg16, write_reg32,
-    write_reg8, AL, AX, DX, EAX, ECX, EDI, ES, ESI, FLAG_DIRECTION,
+    write_reg8, AL, AX, DX, EAX, ECX, EDI, ES, ESI, FLAG_DIRECTION, FLAG_TRAP,
 };
 use crate::cpu::global_pointers::{flags, instruction_pointer, previous_ip};
 use crate::cpu::memory;
@@ -144,6 +144,7 @@ unsafe fn string_instruction(
 
     // unaligned movs is properly handled in the fast path
     let mut rep_fast = (instruction == Instruction::Movs || is_aligned)
+        && *flags & FLAG_TRAP == 0 // single-step REP one iteration at a time
         && is_asize_32 // 16-bit address wraparound
         && match rep {
             Rep::NZ | Rep::Z => true,
@@ -479,6 +480,13 @@ unsafe fn string_instruction(
                 Rep::None => true,
             };
 
+            let finished = if !finished && *flags & FLAG_TRAP != 0 {
+                *instruction_pointer = *previous_ip;
+                true
+            }
+            else {
+                finished
+            };
             if finished {
                 match instruction {
                     Instruction::Scas | Instruction::Cmps => match size {

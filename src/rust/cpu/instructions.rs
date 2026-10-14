@@ -179,7 +179,7 @@ unsafe fn run_with_interrupt_shadow() {
     *previous_ip = *instruction_pointer;
     *instruction_counter += 1;
     if let Ok(opcode) = read_imm8() {
-        run_instruction(opcode | (is_osize_32() as i32) << 8);
+        run_instruction_with_trap(opcode | (is_osize_32() as i32) << 8);
     }
 
     interrupt_shadow = prev;
@@ -2382,7 +2382,8 @@ pub unsafe fn instr_FB() {
     if !instr_FB_without_fault() {
         trigger_gp(0);
     }
-    else {
+    else if *flags & FLAG_TRAP == 0 {
+        // STI inhibits maskable IRQs, not the single-step trap after STI itself.
         run_with_interrupt_shadow();
     }
 }

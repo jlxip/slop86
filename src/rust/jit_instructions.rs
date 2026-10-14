@@ -4,7 +4,8 @@ use crate::codegen;
 use crate::codegen::{BitSize, ConditionNegate};
 use crate::cpu::cpu::{
     FLAGS_ALL, FLAGS_DEFAULT, FLAGS_MASK, FLAG_ADJUST, FLAG_CARRY, FLAG_DIRECTION, FLAG_INTERRUPT,
-    FLAG_IOPL, FLAG_OVERFLOW, FLAG_SUB, FLAG_VM, FLAG_ZERO, OPSIZE_16, OPSIZE_32, OPSIZE_8,
+    FLAG_IOPL, FLAG_OVERFLOW, FLAG_SUB, FLAG_TRAP, FLAG_VM, FLAG_ZERO, OPSIZE_16, OPSIZE_32,
+    OPSIZE_8,
 };
 use crate::cpu::global_pointers;
 use crate::gen;
@@ -4559,6 +4560,12 @@ fn gen_popf(ctx: &mut JitContext, is_32: bool) {
     ctx.builder.eqz_i32();
 
     ctx.builder.and_i32();
+    // A compiled block must stop at POPF when it enables single stepping. The
+    // dispatcher executes the next instruction in the interpreter even if cached.
+    codegen::gen_get_flags(ctx.builder);
+    ctx.builder.const_i32(FLAG_TRAP);
+    ctx.builder.and_i32();
+    ctx.builder.or_i32();
     ctx.builder.if_void();
     {
         codegen::gen_set_eip_to_after_current_instruction(ctx);

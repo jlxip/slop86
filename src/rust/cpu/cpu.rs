@@ -298,6 +298,10 @@ pub static mut cpuid_level: u32 = 0x16;
 pub static mut jit_block_boundary: bool = false;
 pub static mut interrupt_shadow: bool = false;
 
+// Transient execution bookkeeping: an exception, INT or task switch supersedes
+// the current instruction's single-step trap. No state is pending between CPU cycles.
+static mut interrupt_sequence: u32 = 0;
+
 const TSC_ENABLE_IMPRECISE_BROWSER_WORKAROUND: bool = true;
 
 #[cfg(debug_assertions)]
@@ -800,6 +804,7 @@ pub unsafe fn call_interrupt_vector(
     is_software_int: bool,
     error_code: Option<i32>,
 ) {
+    interrupt_sequence = interrupt_sequence.wrapping_add(1);
     if *protected_mode {
         if vm86_mode() && *cr.offset(4) & CR4_VME != 0 {
             panic!("Unimplemented: VME");
@@ -1841,6 +1846,9 @@ pub unsafe fn do_task_switch(selector: i32, error_code: Option<i32>, source: Tas
         new_cpl = new_cs_selector.rpl();
     }
 
+    // A task switch does not retire a stepped instruction in the old task.
+    // TF from the new TSS applies to its first instruction instead.
+    interrupt_sequence = interrupt_sequence.wrapping_add(1);
     *cpl = 0; // run update_eflags at cpl 0
     update_eflags(new_eflags);
 
@@ -3026,13 +3034,35 @@ pub unsafe fn run_instruction(opcode: i32) { gen::interpreter::run(opcode as u32
 pub unsafe fn run_instruction0f_16(opcode: i32) { gen::interpreter0f::run(opcode as u32) }
 pub unsafe fn run_instruction0f_32(opcode: i32) { gen::interpreter0f::run(opcode as u32 | 0x100) }
 
+// TF is sampled before execution, so POPF/IRET enabling TF step the following
+// instruction, and POPF clearing TF is still stepped. Prefixes are part of that
+// same instruction. Synchronous exceptions and software INTs take precedence.
+pub unsafe fn run_instruction_with_trap(opcode: i32) {
+    if *flags & FLAG_TRAP == 0 {
+        run_instruction(opcode);
+        return;
+    }
+    let sequence = interrupt_sequence;
+    let previous_shadow = interrupt_shadow;
+    // #DB must precede an IRQ raised synchronously by an I/O instruction.
+    interrupt_shadow = true;
+    run_instruction(opcode);
+    interrupt_shadow = previous_shadow;
+    if sequence == interrupt_sequence && !*in_hlt {
+        *dreg.offset(6) |= 1 << 14; // DR6.BS, sticky until software clears it
+        call_interrupt_vector(CPU_EXCEPTION_DB, false, None);
+    }
+}
+
 pub unsafe fn cycle_internal() {
     profiler::stat_increment(stat::CYCLE_INTERNAL);
     let mut jit_entry = None;
     let initial_eip = *instruction_pointer;
     let initial_state_flags = *state_flags;
 
-    match tlb_code[(initial_eip as u32 >> 12) as usize] {
+    let cached =
+        if *flags & FLAG_TRAP != 0 { None } else { tlb_code[(initial_eip as u32 >> 12) as usize] };
+    match cached {
         None => {},
         Some(c) => {
             let c = c.as_ref();
@@ -3145,7 +3175,8 @@ pub unsafe fn cycle_internal() {
             Some(c) => {
                 let c = c.as_ref();
 
-                if initial_state_flags == c.state_flags
+                if *flags & FLAG_TRAP == 0
+                    && initial_state_flags == c.state_flags
                     && c.state_table[initial_eip as usize & 0xFFF] != u16::MAX
                 {
                     profiler::stat_increment(stat::RUN_INTERPRETED_PAGE_HAS_ENTRY_AFTER_PAGE_WALK);
@@ -3216,10 +3247,11 @@ unsafe fn jit_run_interpreted(mut phys_addr: u32) {
         let opcode = *memory::mem8.offset(phys_addr as isize) as i32;
         *instruction_pointer += 1;
         dbg_assert!(*prefixes == 0);
-        run_instruction(opcode | (*is_32 as i32) << 8);
+        let single_step = *flags & FLAG_TRAP != 0;
+        run_instruction_with_trap(opcode | (*is_32 as i32) << 8);
         dbg_assert!(*prefixes == 0);
 
-        if jit_block_boundary
+        if single_step || *flags & FLAG_TRAP != 0 || jit_block_boundary
             || Page::page_of(start_eip as u32) != Page::page_of(*instruction_pointer as u32)
                 // Limit the number of iterations, as jumps within the same page are not counted as
                 // block boundaries for the interpreter, but only on the next backwards jump
@@ -4407,11 +4439,6 @@ pub unsafe fn update_eflags(new_flags: i32) {
     }
     *flags = (new_flags ^ (*flags ^ new_flags) & dont_update) & clear | FLAGS_DEFAULT;
     *flags_changed = 0;
-
-    if *flags & FLAG_TRAP != 0 {
-        dbg_log!("Not supported: trap flag");
-    }
-    *flags &= !FLAG_TRAP;
 }
 
 #[no_mangle]
