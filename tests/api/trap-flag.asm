@@ -23,6 +23,11 @@ ORG 0x1000
 %endmacro
 
 dd entry, db_handler, bp_handler, ud_handler, expected, (expected_end-expected)/4, irq_handler
+%if CASE >= 23
+ dd entry.bad
+%else
+ dd 0
+%endif
 entry:
 %if CASE = 1
  ARM
@@ -126,6 +131,67 @@ entry:
  popf
  out dx, al
 .after: hlt
+%elif CASE = 18 || CASE = 19 || CASE = 20 || CASE = 21 || CASE = 22
+%if CASE = 20
+ ARM
+%endif
+%if CASE = 19
+ db 0x65
+%elif CASE = 22
+ db 0x65, 0x67, 0x66
+%endif
+ db 0xF1
+.after:
+%if CASE = 21
+ mov dword [0x9020], 1
+.spin: jmp .spin
+%else
+ hlt
+%endif
+%elif CASE >= 23
+ mov eax, 0x33
+%if CASE = 32
+ ARM
+%elif CASE = 33
+ jmp .bad
+ times 0xFFE-($-$$) db 0x90
+%endif
+.bad:
+%if CASE = 23
+ db 0xF0, 0xF1
+%elif CASE = 24
+ db 0xF0, 0xCC
+%elif CASE = 25
+ db 0xF0, 0x65, 0xF1
+%elif CASE = 26
+ db 0xF0
+ inc eax
+%elif CASE = 27
+ lock inc word [0xA000]
+%elif CASE = 28
+ db 0xF0
+ add ax, [0xA000] ; memory source, not memory destination
+%elif CASE = 29
+ mov ebx, 1
+ lock btc word [0xA000], bx
+%elif CASE = 30
+ db 0xF0
+ cmp word [0xA000], 1
+%elif CASE = 31
+ db 0xF0
+ bt word [0xA000], ax
+%elif CASE = 32
+%if MODE = 32
+ a16 o16 lock add word [0xA000], 3
+%else
+ a32 o32 lock add dword [0xA000], 3
+%endif
+%elif CASE = 33
+ db 0xF0, 0x65, 0xF1
+%elif CASE = 34
+ db 0xF0, 0xF0, 0xF1
+%endif
+.after: hlt
 %elif CASE = 15
  ; Opposite operand-size POPF must preserve TF too.
 %if MODE = 32
@@ -148,7 +214,7 @@ expected:
  dd entry.rep, entry.rep, entry.after
 %elif CASE = 13
  dd entry.after
-%elif CASE = 9 || CASE = 10
+%elif CASE = 9 || CASE = 10 || (CASE >= 23 && CASE != 32)
 %else
  dd entry.after
 %endif
@@ -176,7 +242,11 @@ db_handler:
  movzx edx, word [FRAME+RETFLAGS]
 %endif
  mov [edi+4], edx
+%if CASE = 21
+ xor edx, edx ; user-mode handler cannot read DR6
+%else
  mov edx, dr6
+%endif
  mov [edi+8], edx
  mov [edi+12], ecx
  pushf
@@ -217,7 +287,17 @@ ud_handler:
  mov bp, sp
 %endif
  inc dword [UD_COUNT]
+%if CASE >= 23
+%if MODE = 32
+ mov eax, [FRAME+32]
+%else
+ movzx eax, word [FRAME+32]
+%endif
+ mov [0x9024], eax
+ add RETSIZE [FRAME+32], entry.after-entry.bad
+%else
  add RETSIZE [FRAME+32], 2
+%endif
  and RETSIZE [FRAME+RETFLAGS], ~0x100
  popad
  RETURN

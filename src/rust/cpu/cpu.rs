@@ -3030,9 +3030,40 @@ pub unsafe fn modrm_resolve(modrm_byte: i32) -> OrPageFault<i32> {
     }
 }
 
-pub unsafe fn run_instruction(opcode: i32) { gen::interpreter::run(opcode as u32) }
-pub unsafe fn run_instruction0f_16(opcode: i32) { gen::interpreter0f::run(opcode as u32) }
-pub unsafe fn run_instruction0f_32(opcode: i32) { gen::interpreter0f::run(opcode as u32 | 0x100) }
+unsafe fn check_lock_prefix(opcode: u32) -> bool {
+    if *prefixes & prefix::PREFIX_LOCK == 0 {
+        return true;
+    }
+    let mask = prefix::lock_modrm_mask(opcode);
+    if mask != 0 {
+        let modrm = match safe_read8(*instruction_pointer) {
+            Ok(v) => v as u8,
+            Err(()) => return false,
+        };
+        if prefix::lock_modrm_valid(mask, modrm) {
+            return true;
+        }
+    }
+    trigger_ud();
+    false
+}
+
+pub unsafe fn run_instruction(opcode: i32) {
+    let byte = opcode as u8;
+    if byte == 0x0F || prefix::is_legacy_prefix(byte) || check_lock_prefix(byte as u32) {
+        gen::interpreter::run(opcode as u32);
+    }
+}
+pub unsafe fn run_instruction0f_16(opcode: i32) {
+    if check_lock_prefix(0x0F00 | opcode as u32) {
+        gen::interpreter0f::run(opcode as u32);
+    }
+}
+pub unsafe fn run_instruction0f_32(opcode: i32) {
+    if check_lock_prefix(0x0F00 | opcode as u32) {
+        gen::interpreter0f::run(opcode as u32 | 0x100);
+    }
+}
 
 // TF is sampled before execution, so POPF/IRET enabling TF step the following
 // instruction, and POPF clearing TF is still stepped. Prefixes are part of that

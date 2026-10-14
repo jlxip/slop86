@@ -87,7 +87,7 @@ pub fn instr_67_analyze(cpu: &mut CpuContext, analysis: &mut Analysis) {
     analyze_step_handle_prefix(cpu, analysis)
 }
 pub fn instr_F0_analyze(cpu: &mut CpuContext, analysis: &mut Analysis) {
-    // lock: Ignored
+    cpu.prefixes |= crate::prefix::PREFIX_LOCK;
     analyze_step_handle_prefix(cpu, analysis)
 }
 pub fn instr_F2_analyze(cpu: &mut CpuContext, analysis: &mut Analysis) {

@@ -2162,21 +2162,16 @@ pub unsafe fn instr32_EF() {
 }
 
 pub unsafe fn instr_F0() {
-    // lock
-    if false {
-        dbg_log!("lock");
-    }
-    // TODO
-    // This triggers UD when used with
-    // some instructions that don't write to memory
+    *prefixes |= prefix::PREFIX_LOCK;
     run_prefix_instruction();
+    *prefixes = 0;
 }
 
 #[no_mangle]
 pub unsafe fn instr_F1() {
-    // INT1
-    // https://code.google.com/p/corkami/wiki/x86oddities#IceBP
-    dbg_assert!(false);
+    // ICEBP/INT1 is a privileged software exception: unlike INT imm8, it
+    // ignores the IDT gate DPL. It traps after F1 and leaves DR6 unchanged.
+    call_interrupt_vector(CPU_EXCEPTION_DB, false, None);
 }
 
 pub unsafe fn instr_F2() {

@@ -297,7 +297,7 @@ const encodings = [
     { opcode: 0xEF, block_boundary: 1, os: 1, skip: 1 },
 
     { opcode: 0xF0, prefix: 1 },
-    { opcode: 0xF1, skip: 1 },
+    { opcode: 0xF1, block_boundary: 1, skip: 1 }, // ICEBP/INT1
     { opcode: 0xF2, prefix: 1 },
     { opcode: 0xF3, prefix: 1 },
     { opcode: 0xF4, block_boundary: 1, no_next_instruction: 1, skip: 1 }, // hlt

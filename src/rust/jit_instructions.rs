@@ -84,12 +84,34 @@ pub fn jit_instruction(ctx: &mut JitContext, instr_flags: &mut u32) {
     );
 }
 
+fn check_lock_prefix(ctx: &mut JitContext, opcode: u32) -> bool {
+    if ctx.cpu.prefixes & crate::prefix::PREFIX_LOCK == 0 {
+        return true;
+    }
+    let mask = crate::prefix::lock_modrm_mask(opcode);
+    if mask != 0
+        && crate::prefix::lock_modrm_valid(mask, crate::cpu::memory::read8(ctx.cpu.eip) as u8)
+    {
+        return true;
+    }
+    // We emit no instruction body, but generation must consume the same full
+    // instruction length as the analyzer (including displacement/immediate).
+    let mut decoded = ctx.cpu.clone();
+    decoded.eip = ctx.start_of_current_instruction;
+    crate::analysis::analyze_step(&mut decoded);
+    ctx.cpu.eip = decoded.eip;
+    codegen::gen_trigger_ud(ctx);
+    false
+}
+
 pub fn jit_handle_prefix(ctx: &mut JitContext, instr_flags: &mut u32) {
-    gen::jit::jit(
-        ctx.cpu.read_imm8() as u32 | (ctx.cpu.osize_32() as u32) << 8,
-        ctx,
-        instr_flags,
-    );
+    let opcode = ctx.cpu.read_imm8() as u32;
+    if opcode == 0x0F
+        || crate::prefix::is_legacy_prefix(opcode as u8)
+        || check_lock_prefix(ctx, opcode)
+    {
+        gen::jit::jit(opcode | (ctx.cpu.osize_32() as u32) << 8, ctx, instr_flags);
+    }
 }
 
 pub fn jit_handle_segment_prefix(segment: u32, ctx: &mut JitContext, instr_flags: &mut u32) {
@@ -99,10 +121,16 @@ pub fn jit_handle_segment_prefix(segment: u32, ctx: &mut JitContext, instr_flags
 }
 
 pub fn instr16_0F_jit(ctx: &mut JitContext, instr_flags: &mut u32) {
-    gen::jit0f::jit(ctx.cpu.read_imm8() as u32, ctx, instr_flags)
+    let opcode = ctx.cpu.read_imm8() as u32;
+    if check_lock_prefix(ctx, 0x0F00 | opcode) {
+        gen::jit0f::jit(opcode, ctx, instr_flags);
+    }
 }
 pub fn instr32_0F_jit(ctx: &mut JitContext, instr_flags: &mut u32) {
-    gen::jit0f::jit(ctx.cpu.read_imm8() as u32 | 0x100, ctx, instr_flags)
+    let opcode = ctx.cpu.read_imm8() as u32;
+    if check_lock_prefix(ctx, 0x0F00 | opcode) {
+        gen::jit0f::jit(opcode | 0x100, ctx, instr_flags);
+    }
 }
 pub fn instr_26_jit(ctx: &mut JitContext, instr_flags: &mut u32) {
     jit_handle_segment_prefix(ES, ctx, instr_flags)
@@ -133,7 +161,7 @@ pub fn instr_67_jit(ctx: &mut JitContext, instr_flags: &mut u32) {
     jit_handle_prefix(ctx, instr_flags)
 }
 pub fn instr_F0_jit(ctx: &mut JitContext, instr_flags: &mut u32) {
-    // lock: Ignore
+    ctx.cpu.prefixes |= crate::prefix::PREFIX_LOCK;
     jit_handle_prefix(ctx, instr_flags)
 }
 pub fn instr_F2_jit(ctx: &mut JitContext, instr_flags: &mut u32) {
