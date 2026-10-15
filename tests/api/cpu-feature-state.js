@@ -20,9 +20,12 @@ try
 {
     // Let firmware initialize PCI BARs before exercising a complete machine snapshot.
     emulator.run();
-    for(let i = 0; i < 500 && !emulator.screen_adapter.get_text_screen().some(line => line.includes("No bootable device")); i++) await pause(10);
+    // Firmware can take over 20 seconds under emulated CI hosts.
+    const deadline = Date.now() + 60000;
+    while(Date.now() < deadline && !emulator.screen_adapter.get_text_screen().some(line => line.includes("No bootable device"))) await pause(10);
     await emulator.stop();
-    assert.ok(emulator.screen_adapter.get_text_screen().some(line => line.includes("No bootable device")), "firmware initialization completes");
+    const screen = emulator.screen_adapter.get_text_screen();
+    assert.ok(screen.some(line => line.includes("No bootable device")), "firmware initialization completes\n" + screen.join("\n"));
     const cpu = emulator.v86.cpu;
     assert.ok(cpu.devices.net, "partial network options retain the default NE2000");
     assert.deepEqual(options, { mtu: 1500 }, "network defaults do not mutate caller options");
